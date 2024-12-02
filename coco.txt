@@ -1,0 +1,7 @@
+res
+cap
+ind
+dio
+ic
+led
+ot

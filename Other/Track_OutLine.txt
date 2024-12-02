@@ -1,0 +1,96 @@
+import cv2
+from collections import defaultdict
+import supervision as sv
+from ultralytics import YOLO
+
+# Load the YOLOv8 model
+model = YOLO('yolov8l.pt')
+
+# Set up video capture
+cap = cv2.VideoCapture(r"E:\NCKH Part 2\Video test\pexels-kelly-lacy-5473765 (2160p).mp4")
+
+# Define the line coordinates
+'''START = sv.Point(182, 254)
+END = sv.Point(462, 254)'''
+'''def RGB(event, x, y, flags, param):
+    if event == cv2.EVENT_MOUSEMOVE:
+        point = [x, y]
+        print(point)
+cv2.namedWindow('RGB')
+cv2.setMouseCallback('RGB', RGB)'''
+
+START =   sv.Point(0,1500)
+END = sv.Point(8000, 1500)
+# Store the track history
+track_history = defaultdict(lambda: [])
+# Create a dictionary to keep track of objects that have crossed the line
+crossed_objects = {}
+
+listcar=[]
+listtruck=[]
+class_info=0
+while cap.isOpened():
+    success, frame = cap.read()
+
+    if success:
+        # Run YOLOv8 tracking on the frame, persisting tracks between frames
+        #results = model.track(frame, classes=[2, 3, 5, 7], persist=True, save=True, tracker="bytetrack.yaml")
+        results = model.track(frame,  persist=True, tracker="bytetrack.yaml")
+        # Get the boxes and track IDs
+        boxes = results[0].boxes.xywh.cpu()
+        track_ids = results[0].boxes.id.int().cpu().tolist()
+        classtrack = results[0].boxes.cls.cpu().tolist()
+        #print(classtrack)
+        # Visualize the results on the frame
+        annotated_frame = results[0].plot()
+        #detections = sv.Detections.from_yolov8(results[0])
+        id1=0
+        object_detection=classtrack[track_ids]
+        print(object_detection)
+        # Plot the tracks and count objects crossing the line
+        for box, track_id in zip(boxes, track_ids):
+            x, y, w, h = box
+            track = track_history[track_id]
+            track.append((float(x), float(y)))  # x, y center point
+            if len(track_ids) > 50:  # retain 30 tracks for 30 frames
+                track.pop(0)
+            # Check if the object crosses the line
+            if START.x < x < END.x and abs(y - START.y) < 50:
+                if track_id < len(classtrack):  # Ensure track_id is within the bounds of classtrack
+                    class_info = classtrack[track_id]
+
+                # Assuming objects cross horizontally
+                if track_id not in crossed_objects:
+                    #crossed_objects[track_id] = {'class': class_info, 'crossed': True}
+                    crossed_objects[track_id] = {'class': class_info, 'crossed': True}
+
+                print(class_info)
+                print(crossed_objects)
+                print(listcar)
+                # Annotate the object as it crosses the line
+                cv2.rectangle(annotated_frame, (int(x - w / 2), int(y - h / 2)), (int(x + w / 2), int(y + h / 2)),
+                              (0, 255, 0), 2)
+
+                # Draw the line on the frame
+            cv2.line(annotated_frame, (START.x, START.y), (END.x, END.y), (0, 255, 0), 10)
+
+            # Write the count of objects on each frame
+            count_text = f"Objects crossed: {len(crossed_objects)}"
+            textcar = f"Car: {len(listcar)}"
+            texttruck=f"Truck: {len(listtruck)}"
+            cv2.putText(annotated_frame, count_text, (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 3, (0, 255, 0), 5)
+            #count_car = f"Car:{len(car)}"
+            cv2.putText(annotated_frame,textcar,(10,160),cv2.FONT_HERSHEY_SIMPLEX,3,(0,255,0),5)
+            #count_truck = f"Truck:{len(truck)}"
+            cv2.putText(annotated_frame, texttruck, (10, 250), cv2.FONT_HERSHEY_SIMPLEX, 3, (0, 255, 0), 5)
+
+        cv2.imshow("RGB",cv2.resize(annotated_frame,(800,600)))
+        if cv2.waitKey(30) & 0xFF == ord('q'):
+            break
+        # Write the frame with annotations to the output video
+
+    else:
+        break
+
+# Release the video capture
+cap.release()

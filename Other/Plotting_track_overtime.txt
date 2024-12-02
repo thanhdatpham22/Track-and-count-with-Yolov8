@@ -1,0 +1,76 @@
+from collections import defaultdict
+
+import cv2
+import numpy as np
+import supervision as sv
+
+from ultralytics import YOLO
+
+# Load the YOLOv8 model
+model = YOLO('yolov8l.pt')
+
+# Open the video file
+video_path = r"C:\Users\phamd\Downloads\vehicle-counting.mp4"
+cap = cv2.VideoCapture(video_path)
+id_box = []
+# Store the track history
+track_history = defaultdict(lambda: [])
+unique_track_ids = set()
+# Loop through the video frames
+while cap.isOpened():
+    # Read a frame from the video
+    success, frame = cap.read()
+
+    if success:
+        # Run YOLOv8 tracking on the frame, persisting tracks between frames
+        results = model.track(frame, persist=True)
+        #for results in model.track(source=r"C:\Users\phamd\Downloads\test.mp4",show=True,stream=True):
+        for results in model.track(source=video_path, show=True, stream=True):
+
+            result = results.boxes
+            id_box.append(result.id.detach().cpu().numpy())
+            print(id_box)
+
+            frame=results.orig_img
+            detections=sv.Detections.from_yolov8(results)
+            if results.boxes.id is not None:
+                detections.track_ids = results[0].boxes.id.cpu().numpy().astype(int)
+                classtracks=results[0].boxes.cls.cpu()
+                boxes = results[0].boxes.xywh.cpu()
+                annotated_frame = results[0].plot()
+            detections=detections[detections.class_id!=0]
+                # Get the boxes and track IDs
+                #boxes = results[0].boxes.xywh.cpu()
+                #track_ids = results[0].boxes.id.int().cpu().tolist()
+
+                # Visualize the results on the frame
+                #annotated_frame = results[0].plot()
+
+        # Plot the tracks
+        for box, track_id in zip(boxes, detections.track_ids):
+
+            x, y, w, h = box
+            track = track_history[track_id]
+            track.append((float(x), float(y)))  # x, y center point
+            if len(track) > 30:  # retain 90 tracks for 90 frames
+                track.pop(0)
+            cv2.putText(frame, f"Total Components: {track_id}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1,
+                        (255, 0, 255),
+                        2, cv2.LINE_AA)
+            # Draw the tracking lines
+            points = np.hstack(track).astype(np.int32).reshape((-1, 1, 2))
+            cv2.polylines(annotated_frame, [points], isClosed=False, color=(230, 230, 230), thickness=50)
+
+        # Display the annotated frame
+        cv2.imshow("YOLOv8 Tracking",cv2.resize(annotated_frame,(800,600)) )
+
+        # Break the loop if 'q' is pressed
+        if cv2.waitKey(1) & 0xFF == ord("q"):
+            break
+    else:
+        # Break the loop if the end of the video is reached
+        break
+
+# Release the video capture object and close the display window
+cap.release()
+cv2.destroyAllWindows()
